@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RFID Radar</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --green: #00ff88;
+      --green-dim: #00994d;
+      --green-dark: #003320;
+      --bg: #040d08;
+      --panel: #080f0a;
+      --border: #0a2a14;
+      --red: #ff3355;
+      --yellow: #ffd600;
+      --blue: #00cfff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--green);
+      font-family: 'Share Tech Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 16px 60px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,255,136,0.03) 3px,
+        rgba(0,255,136,0.03) 4px
+      );
+      z-index: 100;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 800;
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      letter-spacing: 0.15em;
+      color: var(--green);
+      text-shadow: 0 0 18px rgba(0,255,136,0.5);
+    }
+
+    header p {
+      font-size: 0.72rem;
+      color: var(--green-dim);
+      letter-spacing: 0.2em;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 20px;
+      width: 100%;
+      max-width: 460px;
+      margin-bottom: 16px;
+      box-shadow: 0 0 20px rgba(0,255,136,0.04);
+    }
+
+    .card-title {
+      font-size: 0.65rem;
+      letter-spacing: 0.25em;
+      color: var(--green-dim);
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    /* Select */
+    select {
+      width: 100%;
+      background: #060d07;
+      border: 1px solid var(--green-dim);
+      color: var(--green);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.9rem;
+      padding: 10px 12px;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2300994d' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    select:focus { border-color: var(--green); box-shadow: 0 0 8px rgba(0,255,136,0.2); }
+
+    /* Botones */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 22px;
+      border: 1px solid;
+      border-radius: 3px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: transparent;
+    }
+
+    .btn-connect {
+      border-color: var(--green);
+      color: var(--green);
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-connect:hover { background: rgba(0,255,136,0.08); box-shadow: 0 0 12px rgba(0,255,136,0.2); }
+
+    .btn-disconnect {
+      border-color: var(--red);
+      color: var(--red);
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-disconnect:hover { background: rgba(255,51,85,0.08); }
+
+    .btn-save {
+      border-color: var(--green);
+      color: var(--green);
+      padding: 9px 18px;
+      font-size: 0.8rem;
+    }
+    .btn-save:hover { background: rgba(0,255,136,0.1); }
+
+    .btn-memorize {
+      border-color: var(--blue);
+      color: var(--blue);
+      font-size: 0.78rem;
+      padding: 8px 14px;
+    }
+    .btn-memorize:hover { background: rgba(0,207,255,0.08); }
+
+    .btn-delete {
+      border-color: #400010;
+      color: var(--red);
+      font-size: 0.75rem;
+      padding: 5px 10px;
+      background: transparent;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      border-radius: 2px;
+      border-width: 1px;
+      border-style: solid;
+    }
+    .btn-delete:hover { background: rgba(255,51,85,0.12); }
+
+    /* RSSI Meter */
+    .rssi-display {
+      text-align: center;
+      padding: 10px 0 6px;
+    }
+
+    .rssi-value {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 800;
+      font-size: 3rem;
+      line-height: 1;
+      color: var(--green);
+      text-shadow: 0 0 20px rgba(0,255,136,0.5);
+      transition: color 0.4s;
+    }
+
+    .rssi-unit {
+      font-size: 0.8rem;
+      color: var(--green-dim);
+      letter-spacing: 0.15em;
+      margin-top: 4px;
+    }
+
+    .nivel-badge {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 6px 18px;
+      border-radius: 2px;
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      border: 1px solid;
+      transition: all 0.4s;
+    }
+
+    /* Barra de señal */
+    .signal-bar-wrap {
+      margin: 18px 0 4px;
+      height: 8px;
+      background: #0a1a10;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .signal-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease, background 0.5s ease;
+    }
+
+    .signal-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.62rem;
+      color: var(--green-dim);
+      margin-top: 4px;
+    }
+
+    /* Buscando línea */
+    .buscando {
+      font-size: 0.8rem;
+      color: var(--green-dim);
+      margin-top: 12px;
+      letter-spacing: 0.08em;
+    }
+
+    .buscando span {
+      color: var(--green);
+    }
+
+    /* UID detectado */
+    .uid-live {
+      font-size: 0.68rem;
+      color: #005533;
+      margin-top: 8px;
+      word-break: break-all;
+      min-height: 1.2em;
+      transition: color 0.3s;
+    }
+    .uid-live.nuevo { color: var(--yellow); }
+
+    /* Formulario memorizar */
+    .memorize-form {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid #0a2a20;
+      border-radius: 3px;
+      background: #040d07;
+    }
+    .memorize-form.open { display: flex; }
+
+    .memorize-form input {
+      background: #060d07;
+      border: 1px solid var(--green-dim);
+      color: var(--green);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.85rem;
+      padding: 9px 12px;
+      border-radius: 3px;
+      outline: none;
+      width: 100%;
+    }
+    .memorize-form input:focus { border-color: var(--green); }
+    .memorize-form input::placeholder { color: #004422; }
+
+    .form-hint {
+      font-size: 0.67rem;
+      color: var(--green-dim);
+      letter-spacing: 0.08em;
+    }
+
+    /* Lista etiquetas */
+    .tag-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+    .tag-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #060d07;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .tag-item.activo {
+      border-color: var(--green-dim);
+      background: #061a0d;
+    }
+
+    .tag-nombre {
+      font-size: 0.88rem;
+      color: var(--green);
+    }
+
+    .tag-uid {
+      font-size: 0.62rem;
+      color: #004422;
+      margin-top: 3px;
+      word-break: break-all;
+    }
+
+    /* Status dot */
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #003320;
+      margin-right: 8px;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .status-dot.on {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .status-text {
+      font-size: 0.72rem;
+      color: var(--green-dim);
+      letter-spacing: 0.15em;
+      margin-bottom: 14px;
+    }
+
+    .row { display: flex; gap: 10px; align-items: center; }
+    .flex1 { flex: 1; }
+
+    /* Advertencia Web Serial */
+    .warning {
+      font-size: 0.72rem;
+      color: var(--yellow);
+      letter-spacing: 0.08em;
+      text-align: center;
+      padding: 10px;
+      border: 1px solid #332200;
+      border-radius: 3px;
+      background: #120d00;
+      margin-bottom: 16px;
+      max-width: 460px;
+      width: 100%;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>📡 RFID RADAR</h1>
+    <p>LOCALIZADOR DE OBJETOS · UHF</p>
+  </header>
+
+  <div class="warning" id="warningSerial">
+    ⚠ Web Serial requiere Google Chrome en escritorio
+  </div>
+
+  <!-- CONEXIÓN -->
+  <div class="card">
+    <div class="card-title">▸ CONEXIÓN SERIAL</div>
+    <div class="status-text">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">DESCONECTADO</span>
+    </div>
+    <button class="btn btn-connect" id="btnConectar" onclick="toggleConexion()">
+      🔌 CONECTAR ARDUINO
+    </button>
+  </div>
+
+  <!-- BÚSQUEDA -->
+  <div class="card">
+    <div class="card-title">▸ OBJETO A LOCALIZAR</div>
+    <select id="selectObjetivo" onchange="cambiarObjetivo()"></select>
+    <div class="buscando">BUSCANDO: <span id="nombreObjetivo">—</span></div>
+    <div class="uid-live" id="uidLive">UID EN VIVO: —</div>
+  </div>
+
+  <!-- SEÑAL -->
+  <div class="card">
+    <div class="card-title">▸ INTENSIDAD DE SEÑAL</div>
+    <div class="rssi-display">
+      <div class="rssi-value" id="rssiValor">—</div>
+      <div class="rssi-unit">dBm</div>
+    </div>
+    <div class="signal-bar-wrap">
+      <div class="signal-bar-fill" id="signalBar" style="width:0%;background:var(--red)"></div>
+    </div>
+    <div class="signal-label"><span>LEJOS · -90</span><span>CERCA · -30</span></div>
+    <div style="text-align:center;margin-top:12px">
+      <span class="nivel-badge" id="nivelBadge" style="border-color:#400010;color:var(--red)">🔴 LEJOS</span>
+    </div>
+  </div>
+
+  <!-- MEMORIZAR -->
+  <div class="card">
+    <div class="card-title">▸ MEMORIZAR ETIQUETA</div>
+    <div class="row">
+      <div class="flex1" style="font-size:0.8rem;color:var(--green-dim)">
+        Acerca una etiqueta desconocida o añade manualmente
+      </div>
+      <button class="btn btn-memorize" onclick="toggleFormMemorizar()">➕ AÑADIR</button>
+    </div>
+    <div class="memorize-form" id="memorizeForm">
+      <div class="form-hint">UID DE LA ETIQUETA</div>
+      <input type="text" id="inputUID" placeholder="E200..." />
+      <div class="form-hint">DESCRIPCIÓN</div>
+      <input type="text" id="inputNombre" placeholder="Llaves coche..." />
+      <button class="btn btn-save" onclick="memorizar()">💾 GUARDAR</button>
+    </div>
+  </div>
+
+  <!-- LISTA -->
+  <div class="card">
+    <div class="card-title">▸ ETIQUETAS MEMORIZADAS (<span id="totalEtiquetas">0</span>)</div>
+    <div class="tag-list" id="tagList"></div>
+  </div>
+
+<script>
+  // ── Estado ──────────────────────────────────────────────────
+  const STORAGE_KEY = "rfid_objetos_v2";
+
+  const objetosIniciales = [
+    { nombre: "Llaves coche", uid: "E234A7916B020000" },
+    { nombre: "Cartera",      uid: "9988776655443322" },
+  ];
+
+  let objetos = cargarObjetos();
+  let objetivo = objetos[0] || null;
+  let rssiActual = -90;
+  let conectado = false;
+  let readerGlobal = null;
+  let portGlobal = null;
+  let formAbierto = false;
+
+  // ── Persistencia ─────────────────────────────────────────────
+  function cargarObjetos() {
+    try {
+      const g = localStorage.getItem(STORAGE_KEY);
+      return g ? JSON.parse(g) : [...objetosIniciales];
+    } catch { return [...objetosIniciales]; }
+  }
+
+  function guardarObjetos() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(objetos));
+  }
+
+  // ── Render ───────────────────────────────────────────────────
+  function renderSelect() {
+    const sel = document.getElementById("selectObjetivo");
+    sel.innerHTML = objetos.map(o =>
+      `<option value="${o.uid}">${o.nombre}</option>`
+    ).join("");
+    if (objetivo) sel.value = objetivo.uid;
+    document.getElementById("nombreObjetivo").textContent = objetivo?.nombre || "—";
+  }
+
+  function renderLista() {
+    const list = document.getElementById("tagList");
+    document.getElementById("totalEtiquetas").textContent = objetos.length;
+    if (!objetos.length) {
+      list.innerHTML = `<div style="font-size:0.75rem;color:#004422;text-align:center;padding:10px">Sin etiquetas memorizadas</div>`;
+      return;
+    }
+    list.innerHTML = objetos.map(o => `
+      <div class="tag-item ${objetivo?.uid === o.uid ? 'activo' : ''}">
+        <div>
+          <div class="tag-nombre">${o.nombre}</div>
+          <div class="tag-uid">${o.uid}</div>
+        </div>
+        <button class="btn-delete" onclick="eliminar('${o.uid}')">✕</button>
+      </div>
+    `).join("");
+  }
+
+  function actualizarRSSI(val) {
+    rssiActual = val;
+    const min = -90, max = -30;
+    const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+
+    document.getElementById("rssiValor").textContent = val.toFixed(0);
+
+    const bar = document.getElementById("signalBar");
+    bar.style.width = pct + "%";
+    bar.style.background = pct > 70 ? "var(--green)" : pct > 40 ? "var(--yellow)" : "var(--red)";
+
+    const badge = document.getElementById("nivelBadge");
+    if (val > -40) {
+      badge.textContent = "🔥 MUY CERCA";
+      badge.style.borderColor = "var(--green)";
+      badge.style.color = "var(--green)";
+    } else if (val > -60) {
+      badge.textContent = "🟢 CERCA";
+      badge.style.borderColor = "var(--green-dim)";
+      badge.style.color = "var(--green)";
+    } else if (val > -75) {
+      badge.textContent = "🟡 MEDIA";
+      badge.style.borderColor = "var(--yellow)";
+      badge.style.color = "var(--yellow)";
+    } else {
+      badge.textContent = "🔴 LEJOS";
+      badge.style.borderColor = "#400010";
+      badge.style.color = "var(--red)";
+    }
+  }
+
+  function setEstadoConexion(estado) {
+    conectado = estado;
+    const dot  = document.getElementById("statusDot");
+    const txt  = document.getElementById("statusText");
+    const btn  = document.getElementById("btnConectar");
+    dot.className  = "status-dot" + (estado ? " on" : "");
+    txt.textContent = estado ? "CONECTADO" : "DESCONECTADO";
+    btn.className   = "btn " + (estado ? "btn-disconnect" : "btn-connect");
+    btn.innerHTML   = estado ? "❌ DESCONECTAR" : "🔌 CONECTAR ARDUINO";
+  }
+
+  // ── Web Serial ───────────────────────────────────────────────
+  async function toggleConexion() {
+    if (conectado) { await desconectar(); } else { await conectar(); }
+  }
+
+  async function conectar() {
+    if (!("serial" in navigator)) {
+      alert("⚠ Web Serial no está disponible.\nUsa Google Chrome en escritorio.");
+      return;
+    }
+    try {
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      portGlobal = port;
+
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      const reader = decoder.readable.getReader();
+      readerGlobal = reader;
+      setEstadoConexion(true);
+
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lineas = buffer.split("\n");
+        buffer = lineas.pop();
+
+        for (const linea of lineas) {
+          if (!linea.includes(",")) continue;
+          const partes = linea.trim().split(",");
+          if (partes.length < 2) continue;
+          const uid = partes[0].trim().toUpperCase();
+          const rssiVal = parseInt(partes[1].trim());
+          if (isNaN(rssiVal)) continue;
+
+          // Mostrar UID en vivo
+          const uidEl = document.getElementById("uidLive");
+
+          // ¿Etiqueta desconocida?
+          const conocido = objetos.find(o => o.uid === uid);
+          if (!conocido) {
+            uidEl.textContent = "⚠ UID NUEVO DETECTADO: " + uid;
+            uidEl.className = "uid-live nuevo";
+            document.getElementById("inputUID").value = uid;
+            abrirFormMemorizar();
+          } else {
+            uidEl.textContent = "UID: " + uid;
+            uidEl.className = "uid-live";
+          }
+
+          // Actualizar RSSI si es el objetivo
+          if (uid === objetivo?.uid) {
+            actualizarRSSI(rssiVal);
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name !== "NotFoundError") console.error("Error Serial:", err);
+      setEstadoConexion(false);
+    }
+  }
+
+  async function desconectar() {
+    try {
+      if (readerGlobal) { await readerGlobal.cancel(); readerGlobal = null; }
+      if (portGlobal)   { await portGlobal.close();    portGlobal = null; }
+    } catch(e) { console.error(e); }
+    setEstadoConexion(false);
+  }
+
+  // ── Acciones ─────────────────────────────────────────────────
+  function cambiarObjetivo() {
+    const uid = document.getElementById("selectObjetivo").value;
+    objetivo = objetos.find(o => o.uid === uid) || null;
+    document.getElementById("nombreObjetivo").textContent = objetivo?.nombre || "—";
+    actualizarRSSI(-90);
+    renderLista();
+  }
+
+  function toggleFormMemorizar() {
+    formAbierto ? cerrarFormMemorizar() : abrirFormMemorizar();
+  }
+
+  function abrirFormMemorizar() {
+    formAbierto = true;
+    document.getElementById("memorizeForm").classList.add("open");
+  }
+
+  function cerrarFormMemorizar() {
+    formAbierto = false;
+    document.getElementById("memorizeForm").classList.remove("open");
+    document.getElementById("inputUID").value = "";
+    document.getElementById("inputNombre").value = "";
+  }
+
+  function memorizar() {
+    const uid    = document.getElementById("inputUID").value.trim().toUpperCase();
+    const nombre = document.getElementById("inputNombre").value.trim();
+    if (!uid || !nombre) { alert("Rellena UID y descripción"); return; }
+    if (objetos.find(o => o.uid === uid)) { alert("Ese UID ya existe"); return; }
+    objetos.push({ nombre, uid });
+    guardarObjetos();
+    renderSelect();
+    renderLista();
+    cerrarFormMemorizar();
+  }
+
+  function eliminar(uid) {
+    if (!confirm("¿Eliminar esta etiqueta?")) return;
+    objetos = objetos.filter(o => o.uid !== uid);
+    if (objetivo?.uid === uid) objetivo = objetos[0] || null;
+    guardarObjetos();
+    renderSelect();
+    renderLista();
+  }
+
+  // ── Init ─────────────────────────────────────────────────────
+  if (!("serial" in navigator)) {
+    document.getElementById("warningSerial").style.display = "block";
+  }
+
+  renderSelect();
+  renderLista();
+  actualizarRSSI(-90);
+</script>
+</body>
+</html>
